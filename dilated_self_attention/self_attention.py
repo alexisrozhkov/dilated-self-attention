@@ -12,13 +12,13 @@ class CausalSelfAttention(torch.nn.Module):
     https://github.com/karpathy/minGPT modified to return softmax denominator
     """
 
-    def __init__(self, embedding_dim: int, max_n: int):
+    def __init__(self, embedding_dim: int, out_dim: int, max_n: int):
         super().__init__()
 
         self.emb_dim = embedding_dim
+        self.out_dim = out_dim
 
-        self.qkv_proj = torch.nn.Linear(self.emb_dim, 3 * self.emb_dim)
-        self.o_proj = torch.nn.Linear(self.emb_dim, self.emb_dim)
+        self.qkv_proj = torch.nn.Linear(self.emb_dim, 3 * self.out_dim)
 
         self.register_buffer(
             "mask", torch.tril(torch.ones(max_n, max_n)).view(1, max_n, max_n)
@@ -26,7 +26,7 @@ class CausalSelfAttention(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         b, n, c = x.size()
-        q, k, v = self.qkv_proj(x).split(self.emb_dim, dim=2)
+        q, k, v = self.qkv_proj(x).split(self.out_dim, dim=2)
 
         # (b, n, c) x (b, c, n) -> (b, n, n)
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
@@ -36,5 +36,4 @@ class CausalSelfAttention(torch.nn.Module):
 
         # (b, n, n) x (b, n, c) -> (b, n, c)
         y = att @ v
-
-        return self.o_proj(y), att_denom
+        return y, att_denom

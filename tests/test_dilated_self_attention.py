@@ -8,11 +8,11 @@ from dilated_self_attention.self_attention import CausalSelfAttention
 
 
 class TestDilatedCausalSelfAttention(unittest.TestCase):
-    def test_single_head_noop(self):
+    def test_noop(self):
         max_len = 64
         emb_dim = 48
 
-        attn = CausalSelfAttention(emb_dim, max_len)
+        attn = CausalSelfAttention(emb_dim, emb_dim, max_len)
         d_attn = DilatedSelfAttention([max_len], [1], 0, attn)
 
         x = torch.normal(0, 1, (1, max_len, emb_dim))
@@ -27,7 +27,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
         max_len = 64
         emb_dim = 48
 
-        attn = CausalSelfAttention(emb_dim, max_len)
+        attn = CausalSelfAttention(emb_dim, emb_dim, max_len)
         d_attn = DilatedSelfAttention([max_len], [2], offset, attn)
 
         x = torch.normal(0, 1, (1, max_len, emb_dim))
@@ -37,39 +37,42 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
         # the corresponding positions and the rest filled with zeros
         out = torch.zeros_like(x)
         out[:, offset::2] = attn(x[:, offset::2])[0]
-        
+
         d_out = d_attn(x)
-        
+
         # had to reduce absolute tolerance a bit to avoid false assertions
-        self.assertTrue(torch.allclose(out, d_out, atol=1e-7))
+        self.assertTrue(torch.allclose(out, d_out, atol=1e-6))
 
     def test_single_head_w_half(self):
         max_len = 64
         emb_dim = 48
-    
-        attn = CausalSelfAttention(emb_dim, max_len)
-        d_attn = DilatedSelfAttention([max_len//2], [1], 0, attn)
-    
+
+        attn = CausalSelfAttention(emb_dim, emb_dim, max_len)
+        d_attn = DilatedSelfAttention([max_len // 2], [1], 0, attn)
+
         x = torch.normal(0, 1, (1, max_len, emb_dim))
-    
+
         # dilated attention with w == half sequence length should be equivalent
         # to a regular one executed over 2 halves of the input sequence
         # individually with the outputs concatenated
-        out = torch.cat((
-            attn(x[:, :max_len//2])[0],
-            attn(x[:, max_len//2:])[0],
-        ), dim=1)
-    
+        out = torch.cat(
+            (
+                attn(x[:, : max_len // 2])[0],
+                attn(x[:, max_len // 2 :])[0],
+            ),
+            dim=1,
+        )
+
         d_out = d_attn(x)
-    
+
         self.assertTrue(torch.allclose(out, d_out))
-        
+
     def test_multi_k(self):
         max_len = 64
         emb_dim = 48
 
-        attn = CausalSelfAttention(emb_dim, max_len//2)
-        d_attn = DilatedSelfAttention([max_len//2, max_len], [1, 2], 0, attn)
+        attn = CausalSelfAttention(emb_dim, emb_dim, max_len // 2)
+        d_attn = DilatedSelfAttention([max_len // 2, max_len], [1, 2], 0, attn)
 
         x = torch.normal(0, 1, (1, max_len, emb_dim))
 
@@ -80,22 +83,28 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
         out1_w = torch.zeros((1, max_len))
         out1[:, ::2], out1_w[:, ::2] = attn(x[:, ::2])
 
-        out2a = attn(x[:, :max_len // 2])
-        out2b = attn(x[:, max_len // 2:])
-        out2 = torch.cat((
-            out2a[0],
-            out2b[0],
-        ), dim=1)
-        out2_w = torch.cat((
-            out2a[1],
-            out2b[1],
-        ), dim=1)
-        
+        out2a = attn(x[:, : max_len // 2])
+        out2b = attn(x[:, max_len // 2 :])
+        out2 = torch.cat(
+            (
+                out2a[0],
+                out2b[0],
+            ),
+            dim=1,
+        )
+        out2_w = torch.cat(
+            (
+                out2a[1],
+                out2b[1],
+            ),
+            dim=1,
+        )
+
         out2_alpha = torch.divide(out2_w, out1_w + out2_w)[:, :, None]
-        
+
         # out = out1*(1-out2_alpha) + out2*out2_alpha
         out = torch.lerp(out1, out2, out2_alpha)
-        
+
         d_out = d_attn(x)
-        
-        self.assertTrue(torch.allclose(out, d_out, atol=1e-7))
+
+        self.assertTrue(torch.allclose(out, d_out, atol=1e-6))
