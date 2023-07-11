@@ -25,17 +25,17 @@ class MultiheadDilatedSelfAttention(torch.nn.Module):
         self.emb_dim = embedding_dim
         self.n_heads = num_heads
 
-        self.dsas = []
-
         max_n = max([w // r for w, r in zip(ws, rs)])
 
+        dsas = []
         for head_idx in range(num_heads):
             attn = CausalSelfAttention(
                 self.emb_dim, self.emb_dim // self.n_heads, max_n
             )
             dsa = DilatedSelfAttention(ws, rs, head_idx, attn)
-            self.dsas.append(dsa)
+            dsas.append(dsa)
 
+        self.dsas = torch.nn.ModuleList(dsas)
         self.o_proj = torch.nn.Linear(self.emb_dim, self.emb_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

@@ -26,11 +26,14 @@ def _segment_and_sparsify(
 
 
 def _aggregate_denom_sums(
-    n: int, sparse_att_denoms: List[torch.Tensor], sparse_indices: List[torch.Tensor]
+    b: int,
+    n: int,
+    device: Union[torch.device, str],
+    sparse_att_denoms: List[torch.Tensor],
+    sparse_indices: List[torch.Tensor],
 ) -> torch.Tensor:
     assert len(sparse_att_denoms) == len(sparse_indices)
-
-    att_denom_sums = torch.zeros((len(sparse_att_denoms), n))
+    att_denom_sums = torch.zeros((b, n), device=device)
 
     for cur_denoms, cur_indices in zip(sparse_att_denoms, sparse_indices):
         att_denom_sums.scatter_add_(1, cur_indices[:, :, 0], cur_denoms)
@@ -48,7 +51,7 @@ def _mix_outputs(
 ) -> torch.Tensor:
     # calculate sums of softmax denominators
     out_att_denom_sums = _aggregate_denom_sums(
-        out_shape[1], sparse_att_denoms, sparse_indices
+        out_shape[0], out_shape[1], out_device, sparse_att_denoms, sparse_indices
     )
 
     out = torch.zeros(out_shape, dtype=out_dtype, device=out_device)
