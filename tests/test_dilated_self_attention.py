@@ -108,3 +108,12 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
         d_out = d_attn(x)
 
         self.assertTrue(torch.allclose(out, d_out, atol=1e-6))
+
+    def test_unbatchable(self):
+        max_len = 64
+        emb_dim = 48
+
+        attn = CausalSelfAttention(emb_dim, emb_dim, max_len // 2)
+
+        with self.assertRaises(AssertionError):
+            DilatedSelfAttention([max_len // 2, max_len], [2, 2], 0, attn)
