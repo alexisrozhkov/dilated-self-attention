@@ -2,8 +2,8 @@ import math
 from typing import Tuple
 
 import torch
-
-from dilated_self_attention.softmax_with_denom import softmax_with_denom
+from einops import rearrange
+from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
 
 
 class CausalSelfAttention(torch.nn.Module):
@@ -17,23 +17,29 @@ class CausalSelfAttention(torch.nn.Module):
 
         self.emb_dim = embedding_dim
         self.out_dim = out_dim
-
         self.qkv_proj = torch.nn.Linear(self.emb_dim, 3 * self.out_dim)
-
-        self.register_buffer(
-            "mask", torch.tril(torch.ones(max_n, max_n)).view(1, max_n, max_n)
-        )
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         b, n, c = x.size()
-        q, k, v = self.qkv_proj(x).split(self.out_dim, dim=2)
+        qkv = rearrange(
+            self.qkv_proj(x), "b s (three h d) -> (b s) three h d", three=3, h=1
+        )
+        softmax_scale = 1.0 / math.sqrt(self.out_dim)
+        dropout_p = 0.0
 
-        # (b, n, c) x (b, c, n) -> (b, n, n)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+        cu_seqlens = torch.arange(
+            0, (b + 1) * n, step=n, dtype=torch.int32, device=qkv.device
+        )
+        output, att_probs, _ = flash_attn_unpadded_qkvpacked_func(
+            qkv,
+            cu_seqlens,
+            n,
+            dropout_p,
+            softmax_scale=softmax_scale,
+            causal=True,
+            return_attn_probs=True,
+        )
 
-        att = att.masked_fill(self.mask[:, :n, :n] == 0, float("-inf"))
-        att, att_denom = softmax_with_denom(att, dim=-1)
+        output = output.view((b, n, self.out_dim))
 
-        # (b, n, n) x (b, n, c) -> (b, n, c)
-        y = att @ v
-        return y, att_denom
+        return output, att_probs[:, 0, :].exp()

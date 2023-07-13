@@ -65,7 +65,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
 
         d_out = d_attn(x)
 
-        self.assertTrue(torch.allclose(out, d_out))
+        self.assertTrue(torch.allclose(out, d_out, atol=1e-7))
 
     def test_multi_k(self):
         max_len = 64
