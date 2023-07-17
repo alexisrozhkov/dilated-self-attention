@@ -1,3 +1,4 @@
+import math
 from typing import List, Tuple, Union
 
 import torch
@@ -8,21 +9,28 @@ def _segment_and_sparsify(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     b, n, c = x.size()
 
-    sparse_indices = []
-    sparse_values = []
+    x_indices = torch.arange(0, n, dtype=torch.long, device=x.device)[None, :, None]
 
-    x_indices = torch.arange(0, n, dtype=torch.long, device=x.device)[
-        None, :, None
-    ].repeat(b, 1, c)
+    num_subatt = sum([int(math.ceil(n / w)) for w in ws])
+    max_subatt_n = ws[0] // rs[0]
+    sparse_indices = torch.zeros(
+        (b, num_subatt * max_subatt_n, c), device=x.device, dtype=torch.int64
+    )
 
+    subatt_idx = 0
     for w, r in zip(ws, rs):
         for segment_indices in torch.split(x_indices, w, 1):
             offset = head_idx % r
-            cur_sparse_indices = segment_indices[:, offset::r, :]
-            sparse_indices.append(cur_sparse_indices)
-            sparse_values.append(torch.gather(x, 1, cur_sparse_indices))
+            sparse_indices[
+                :, subatt_idx * max_subatt_n : (subatt_idx + 1) * max_subatt_n
+            ] = segment_indices[:, offset::r, :]
+            subatt_idx += 1
 
-    return torch.cat(sparse_indices, dim=1), torch.cat(sparse_values, dim=0)
+    sparse_values = torch.gather(x, 1, sparse_indices).view(
+        (b * num_subatt, max_subatt_n, c)
+    )
+
+    return sparse_indices, sparse_values
 
 
 def _mix_outputs(
