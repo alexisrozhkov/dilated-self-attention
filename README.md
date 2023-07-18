@@ -75,7 +75,7 @@ Example benchmark output (on Google Colab instance with T4 GPU):
 ```
 Output format:
 ```shell
-{batch size} x {sequenc length}:
+{batch size} x {sequence length}:
 {sequence inference time}  
 ```
 
