@@ -1,3 +1,4 @@
+import argparse
 import math
 import time
 
@@ -36,7 +37,7 @@ class MultiheadCausalSelfAttention(torch.nn.Module):
         return self.c_proj(y)
 
 
-def benchmark_single_config(model: torch.nn.Module, seq_len: int, batch_size: int, num_iter: int, device: str) -> float:
+def benchmark_single_config(model: torch.nn.Module, seq_len: int, batch_size: int, emb_dim: int, num_iter: int, device: str) -> float:
     """Run inference num_iter times and return average time per iteration in milliseconds"""
     start_t = time.time()
 
@@ -48,7 +49,7 @@ def benchmark_single_config(model: torch.nn.Module, seq_len: int, batch_size: in
     return duration_ms
 
 
-def benchmark_single_model(model: torch.nn.Module, max_seq_len: int, num_seq_lens: int, num_iter: int, device: str):
+def benchmark_single_model(model: torch.nn.Module, max_seq_len: int, num_seq_lens: int, emb_dim: int, num_iter: int, device: str):
     seq_lens = reversed([int(max_seq_len/(2**i)) for i in range(num_seq_lens)])
 
     for seq_len in seq_lens:
@@ -56,7 +57,7 @@ def benchmark_single_model(model: torch.nn.Module, max_seq_len: int, num_seq_len
         batch_size = max_seq_len//seq_len
         print(f"{batch_size} x {seq_len}:")
 
-        time_per_batch_ms = benchmark_single_config(model, seq_len, batch_size, num_iter, device)
+        time_per_batch_ms = benchmark_single_config(model, seq_len, batch_size, emb_dim, num_iter, device)
 
         # normalise the time by the batch size
         time_per_seq_ms = time_per_batch_ms/batch_size
@@ -79,15 +80,67 @@ def main(is_dilated: bool, max_seq_len: int, num_seq_lens: int, num_iter: int, n
             max_seq_len
         ).to(device)
 
-    benchmark_single_model(model, max_seq_len, num_seq_lens, num_iter, device)
+    benchmark_single_model(model, max_seq_len, num_seq_lens, emb_dim, num_iter, device)
 
 
 if __name__ == "__main__":
-    max_seq_len = 1024 * 8
-    num_seq_lens = 4
-    num_heads = 6
-    emb_dim = 64 * num_heads
-    device = 'cuda:0'
-    num_iter = 100
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument(
+        "is_dilated",
+        help="Whether to benchmark a dilated or vanilla self-attention",
+        type=int,
+    )
 
-    main(False, max_seq_len, num_seq_lens, num_iter, num_heads, emb_dim, device)
+    parser.add_argument(
+        "max_seq_len",
+        help="Maximum sequence length to benchmark",
+        type=int,
+    )
+    parser.add_argument(
+        "--num_seq_lens",
+        help="Number of sequence length to evaluate (each is 2x larger than the previous one)",
+        default=4,
+        type=int,
+    )
+
+    parser.add_argument(
+        "--num_iter",
+        help="Number of iterations to repeat the time measurement for (using new random input each time)",
+        default=4,
+        type=int,
+    )
+
+    parser.add_argument(
+        "--num_heads",
+        help="Number of heads for multi-head self-attention",
+        default=6,
+        type=int,
+    )
+
+    parser.add_argument(
+        "--emb_dim",
+        help="Embedding dimensionality",
+        default=384,
+        type=int,
+    )
+
+    parser.add_argument(
+        "--device",
+        help="Device to put the model and input on",
+        default="cuda:0",
+        type=str,
+    )
+
+    args = parser.parse_args()
+
+    main(
+        bool(args.is_dilated),
+        args.max_seq_len,
+        args.num_seq_lens,
+        args.num_iter,
+        args.num_heads,
+        args.emb_dim,
+        args.device
+    )
