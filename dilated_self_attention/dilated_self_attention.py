@@ -1,3 +1,4 @@
+import math
 from typing import List, Tuple, Union
 
 import torch
@@ -5,73 +6,50 @@ import torch
 
 def _segment_and_sparsify(
     x: torch.Tensor, ws: List[int], rs: List[int], head_idx: int
-) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+) -> Tuple[int, torch.Tensor]:
     b, n, c = x.size()
 
-    sparse_indices = []
-    sparse_values = []
+    x_indices = torch.arange(0, n, dtype=torch.long, device=x.device)[None, :, None]
 
-    x_indices = torch.arange(0, n, dtype=torch.long, device=x.device)[
-        None, :, None
-    ].repeat(b, 1, c)
+    num_subatt = sum([int(math.ceil(n / w)) for w in ws])
+    max_subatt_n = ws[0] // rs[0]
+    sparse_indices = torch.zeros((b, num_subatt * max_subatt_n, c), device=x.device, dtype=torch.int64)
 
+    subatt_idx = 0
     for w, r in zip(ws, rs):
         for segment_indices in torch.split(x_indices, w, 1):
             offset = head_idx % r
-            cur_sparse_indices = segment_indices[:, offset::r, :]
-            sparse_indices.append(cur_sparse_indices)
-            sparse_values.append(torch.gather(x, 1, cur_sparse_indices))
+            sparse_indices[:, subatt_idx*max_subatt_n: (subatt_idx+1)*max_subatt_n] = segment_indices[:, offset::r, :]
+            subatt_idx += 1
 
-    return sparse_indices, sparse_values
-
-
-def _aggregate_denom_sums(
-    b: int,
-    n: int,
-    device: Union[torch.device, str],
-    sparse_att_denoms: List[torch.Tensor],
-    sparse_indices: List[torch.Tensor],
-) -> torch.Tensor:
-    assert len(sparse_att_denoms) == len(sparse_indices)
-    att_denom_sums = torch.zeros((b, n), device=device)
-
-    for cur_denoms, cur_indices in zip(sparse_att_denoms, sparse_indices):
-        att_denom_sums.scatter_add_(1, cur_indices[:, :, 0], cur_denoms)
-
-    return att_denom_sums
+    return max_subatt_n, sparse_indices
 
 
 def _mix_outputs(
     out_shape: Tuple[int, int, int],
     out_dtype: torch.dtype,
     out_device: Union[torch.device, str],
-    sparse_os: List[torch.Tensor],
-    sparse_att_denoms: List[torch.Tensor],
-    sparse_indices: List[torch.Tensor],
+    a_os: torch.Tensor,
+    a_denoms: torch.Tensor,
+    a_indices: torch.Tensor,
 ) -> torch.Tensor:
     # calculate sums of softmax denominators
-    out_att_denom_sums = _aggregate_denom_sums(
-        out_shape[0], out_shape[1], out_device, sparse_att_denoms, sparse_indices
-    )
+    att_denom_sums = torch.zeros((out_shape[0], out_shape[1]), device=out_device)
+    att_denom_sums.scatter_add_(1, a_indices[:, :, 0], a_denoms)
+
+    # select attention softmax denominator sums for current sparse indices
+    sparse_att_denom_sum = torch.gather(att_denom_sums, 1, a_indices[:, :, 0])
+
+    # compute alphas
+    alphas = torch.divide(a_denoms, sparse_att_denom_sum)[:, :, None]
 
     out = torch.zeros(out_shape, dtype=out_dtype, device=out_device)
-    for sparse_att_denom, sparse_o, cur_sparse_indices in zip(
-        sparse_att_denoms, sparse_os, sparse_indices
-    ):
-        # select attention softmax denominator sums for current sparse indices
-        sparse_att_denom_sum = torch.gather(
-            out_att_denom_sums, 1, cur_sparse_indices[:, :, 0]
-        )
 
-        # compute alphas
-        alphas = torch.divide(sparse_att_denom, sparse_att_denom_sum)[:, :, None]
-
-        # scatter and sum alpha-weighted sparse outputs
-        out.scatter_add_(
-            1,
-            cur_sparse_indices[:, :, : out.shape[2]],
-            torch.multiply(sparse_o, alphas),
-        )
+    out.scatter_add_(
+        1,
+        a_indices[:, :, :out.shape[2]],
+        torch.multiply(a_os, alphas),
+    )
 
     return out
 
@@ -91,25 +69,34 @@ class DilatedSelfAttention(torch.nn.Module):
         self.rs = rs
         self.head_idx = head_idx
         self.attn = attn_module
+        self.indices = None
+        self.max_subatt_n = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        b, n, c = x.size()
+        b, n, in_c = x.size()
 
-        sparse_indices, sparse_values = _segment_and_sparsify(
-            x, self.ws, self.rs, self.head_idx
-        )
+        if self.indices is None:
+            self.max_subatt_n, self.indices = _segment_and_sparsify(
+                x, self.ws, self.rs, self.head_idx
+            )
 
-        # batch values, compute attention in parallel and "unbatch" outputs
-        batched_values = torch.cat(sparse_values, dim=0)
-        batched_os, batched_att_denoms = self.attn(batched_values)
-        sparse_os = torch.split(batched_os, b, 0)
-        sparse_att_denoms = torch.split(batched_att_denoms, b, 0)
+        # extract subsets for each "subattention" from x elements
+        sparse_x = torch.gather(x, 1, self.indices)
+
+        # batch "subattention" values and process in parallel
+        batched_x = sparse_x.view((-1, self.max_subatt_n, in_c))
+        batched_os, batched_att_denoms = self.attn(batched_x)
+
+        # "unbatch" attention outputs
+        out_c = batched_os.shape[-1]
+        sparse_os = batched_os.view((b, -1, out_c))
+        sparse_denoms = batched_att_denoms.view((b, -1))
 
         return _mix_outputs(
-            (b, n, self.attn.out_dim),  # todo: specify out c explicitly
+            (b, n, out_c),
             x.dtype,
             x.device,
             sparse_os,
-            sparse_att_denoms,
-            sparse_indices,
+            sparse_denoms,
+            self.indices,
         )
