@@ -32,6 +32,7 @@ nose2
 ```
 
 ### Run benchmark
+CLI interface:
 ```shell
 usage: benchmark.py [-h] [--num_seq_lens NUM_SEQ_LENS] [--num_iter NUM_ITER] [--num_heads NUM_HEADS] [--emb_dim EMB_DIM] [--device DEVICE] is_dilated max_seq_len
 
@@ -50,6 +51,35 @@ optional arguments:
   --device DEVICE       Device to put the model and input on (default: cuda:0)
 ```
 
+Example benchmark output (on Google Colab instance with T4 GPU):
+```shell
+> python benchmark.py 0 16384
+8 x 2048:
+2.4 ms
+4 x 4096:
+11.2 ms
+2 x 8192:
+46.1 ms
+1 x 16384:
+215.9 ms
+
+> python python benchmark.py 1 16384
+8 x 2048:
+5.0 ms
+4 x 4096:
+8.4 ms
+2 x 8192:
+15.4 ms
+1 x 16384:
+30.0 ms
+```
+Output format:
+```shell
+{batch size} x {sequenc length}:
+{sequence inference time}  
+```
+
+
 ## Current status
 Baseline training and inference is supported, although with some restrictions on the dilated attention configuration and sequence lengths.  
 Attempts to use an optimised self-attention implementation were made, but when a softmax denominators are requested the memory usage and inference speed degrade substantially. Authors of the paper mention:
@@ -65,6 +95,7 @@ If the implementation in this repo is benchmarked vs a vanilla self-attention im
 ## To Do
 - [x] Benchmarking code and reports for dilated self-attention vs vanilla one
 - [ ] Support different w to r ratios for multi-k attention
+- [ ] Add dropout(s)
 - [ ] Support optimised self-attention implementation (needs to expose softmax denominators efficiently)
 - [ ] Distributed training using multiple GPUs handling parts of the sequence
 - [ ] Make sure torch.compile works properly (currently I get NaNs at the first iteration of training)
