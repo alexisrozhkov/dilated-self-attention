@@ -2,6 +2,8 @@
 This is an attempt to implement the dilated self attention as described in 
 [LongNet: Scaling Transformers to 1,000,000,000 Tokens](https://arxiv.org/abs/2307.02486) by Jiayu Ding et al.
 
+## Benchmark results
+![Benchmark results](assets/benchmark.svg)
 
 ## Installation
 ### Basic
@@ -29,6 +31,25 @@ pip install flash-attn==1.0.5
 nose2
 ```
 
+### Run benchmark
+```shell
+usage: benchmark.py [-h] [--num_seq_lens NUM_SEQ_LENS] [--num_iter NUM_ITER] [--num_heads NUM_HEADS] [--emb_dim EMB_DIM] [--device DEVICE] is_dilated max_seq_len
+
+positional arguments:
+  is_dilated            Whether to benchmark a dilated or vanilla self-attention
+  max_seq_len           Maximum sequence length to benchmark
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --num_seq_lens NUM_SEQ_LENS
+                        Number of sequence length to evaluate (each is 2x larger than the previous one) (default: 4)
+  --num_iter NUM_ITER   Number of iterations to repeat the time measurement for (using new random input each time) (default: 200)
+  --num_heads NUM_HEADS
+                        Number of heads for multi-head self-attention (default: 3)
+  --emb_dim EMB_DIM     Embedding dimensionality (default: 384)
+  --device DEVICE       Device to put the model and input on (default: cuda:0)
+```
+
 ## Current status
 Baseline training and inference is supported, although with some restrictions on the dilated attention configuration and sequence lengths.  
 Attempts to use an optimised self-attention implementation were made, but when a softmax denominators are requested the memory usage and inference speed degrade substantially. Authors of the paper mention:
@@ -42,7 +63,7 @@ If the implementation in this repo is benchmarked vs a vanilla self-attention im
 
 
 ## To Do
-- [ ] Benchmarking code and reports for dilated self-attention vs vanilla one
+- [x] Benchmarking code and reports for dilated self-attention vs vanilla one
 - [ ] Support different w to r ratios for multi-k attention
 - [ ] Support optimised self-attention implementation (needs to expose softmax denominators efficiently)
 - [ ] Distributed training using multiple GPUs handling parts of the sequence

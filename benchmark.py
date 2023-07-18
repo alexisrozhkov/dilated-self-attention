@@ -67,8 +67,8 @@ def benchmark_single_model(model: torch.nn.Module, max_seq_len: int, num_seq_len
 def main(is_dilated: bool, max_seq_len: int, num_seq_lens: int, num_iter: int, num_heads: int, emb_dim: int, device: str):
     if is_dilated:
         model = MultiheadDilatedSelfAttention(
-            [512, 2048],
-            [1, 4],
+            [1024, 4096, 16384],
+            [1, 4, 16],
             emb_dim,
             num_heads
         ).to(device)
@@ -108,14 +108,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_iter",
         help="Number of iterations to repeat the time measurement for (using new random input each time)",
-        default=4,
+        default=200,
         type=int,
     )
 
     parser.add_argument(
         "--num_heads",
         help="Number of heads for multi-head self-attention",
-        default=6,
+        default=3,
         type=int,
     )
 
