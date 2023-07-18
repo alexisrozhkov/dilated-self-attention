@@ -46,3 +46,4 @@ If the implementation in this repo is benchmarked vs a vanilla self-attention im
 - [ ] Support different w to r ratios for multi-k attention
 - [ ] Support optimised self-attention implementation (needs to expose softmax denominators efficiently)
 - [ ] Distributed training using multiple GPUs handling parts of the sequence
+- [ ] Make sure torch.compile works properly (currently I get NaNs at the first iteration of training)
