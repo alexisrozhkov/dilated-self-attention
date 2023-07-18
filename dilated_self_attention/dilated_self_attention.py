@@ -12,14 +12,17 @@ def _segment_and_sparsify(
     x_indices = torch.arange(0, n, dtype=torch.long, device=x.device)[None, :, None]
 
     num_subatt = sum([int(math.ceil(n / w)) for w in ws])
-    max_subatt_n = ws[0] // rs[0]
+    max_subatt_n = min(n, ws[0] // rs[0])
     sparse_indices = torch.zeros((b, num_subatt * max_subatt_n, c), device=x.device, dtype=torch.int64)
 
     subatt_idx = 0
     for w, r in zip(ws, rs):
         for segment_indices in torch.split(x_indices, w, 1):
             offset = head_idx % r
-            sparse_indices[:, subatt_idx*max_subatt_n: (subatt_idx+1)*max_subatt_n] = segment_indices[:, offset::r, :]
+            cur_sparse_indices = segment_indices[:, offset::r, :]
+            start_idx = subatt_idx*max_subatt_n
+            end_idx = start_idx+cur_sparse_indices.shape[1]
+            sparse_indices[:, start_idx:end_idx] = cur_sparse_indices
             subatt_idx += 1
 
     return max_subatt_n, sparse_indices
@@ -75,7 +78,7 @@ class DilatedSelfAttention(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, n, in_c = x.size()
 
-        if self.indices is None:
+        if 1:#self.indices is None:
             self.max_subatt_n, self.indices = _segment_and_sparsify(
                 x, self.ws, self.rs, self.head_idx
             )
