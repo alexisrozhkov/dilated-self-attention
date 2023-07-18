@@ -2,13 +2,14 @@ import math
 from typing import Tuple
 
 import torch
-from einops import rearrange
-from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
 
 from dilated_self_attention.softmax_with_denom import softmax_with_denom
 
 
 def _flash_self_attention(qkv_: torch.Tensor):
+    from einops import rearrange
+    from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
+
     b, n, c3 = qkv_.size()
     out_dim = c3 // 3
 
