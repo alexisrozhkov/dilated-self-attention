@@ -57,21 +57,21 @@ Example benchmark output (on Google Colab instance with T4 GPU):
 8 x 2048:
 2.4 ms
 4 x 4096:
-11.2 ms
+11.1 ms
 2 x 8192:
-46.1 ms
+45.5 ms
 1 x 16384:
-215.9 ms
+208.6 ms
 
 > python python benchmark.py 1 16384
 8 x 2048:
-5.0 ms
+7.0 ms
 4 x 4096:
-8.4 ms
+10.8 ms
 2 x 8192:
-15.4 ms
+20.2 ms
 1 x 16384:
-30.0 ms
+26.1 ms
 ```
 Output format:
 ```shell

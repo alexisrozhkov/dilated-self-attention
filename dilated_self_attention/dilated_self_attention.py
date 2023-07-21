@@ -87,16 +87,18 @@ class DilatedSelfAttention(torch.nn.Module):
         self.head_idx = head_idx
         self.attn = attn_module
         self.indices = None
+        self.indices_shape = None
         self.max_subatt_n = None
         self.padding_mask = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, n, in_c = x.size()
 
-        if 1:#self.indices is None:
+        if self.indices is None or self.indices_shape != x.shape:
             self.max_subatt_n, self.indices, self.padding_mask = _prepare_sparse_indices(
                 x, self.ws, self.rs, self.head_idx
             )
+            self.indices_shape = x.shape
 
         # extract subsets for each "subattention" from x elements
         sparse_x = torch.gather(x, 1, self.indices)
