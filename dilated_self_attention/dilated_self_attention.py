@@ -77,11 +77,6 @@ class DilatedSelfAttention(torch.nn.Module):
         assert len(ws) > 0
         assert len(ws) == len(rs)
 
-        # todo: deprecate this requirement
-        assert (
-            len(set([w // r for w, r in zip(ws, rs)])) == 1
-        ), "for now w/r ratios should be identical to simplify batching"
-
         self.ws = ws
         self.rs = rs
         self.head_idx = head_idx
