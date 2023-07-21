@@ -71,11 +71,20 @@ class CausalSelfAttention(torch.nn.Module):
                 "mask", torch.tril(torch.ones(max_n, max_n)).view(1, max_n, max_n)
             )
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
         qkv = self.qkv_proj(x)
 
         if self.flash:
             return _flash_self_attention(qkv)
 
         else:
-            return _vanilla_self_attention(qkv, self.out_dim, self.mask)
+            mask = self.mask
+
+            if padding_mask is not None:
+                mask = torch.multiply(
+                    self.mask[:, :x.shape[1], :x.shape[1]],
+                    torch.multiply(padding_mask[:, None, :],
+                                   padding_mask[:, :, None])
+                ).long()
+
+            return _vanilla_self_attention(qkv, self.out_dim, mask)
