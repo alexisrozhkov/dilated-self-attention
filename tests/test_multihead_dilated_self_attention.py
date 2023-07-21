@@ -12,7 +12,7 @@ MAX_LEN = 32
 
 
 class TestDilatedCausalSelfAttention(unittest.TestCase):
-    @params(*range(1, 1 + MAX_LEN))
+    @params(*range(1, 1 + MAX_LEN*2))
     def test_noop(self, input_len):
         emb_dim = 48
 
@@ -34,7 +34,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
 
         self.assertTrue(torch.allclose(d_out, mh_d_out))
 
-    @params(*range(1, 1 + MAX_LEN))
+    @params(*range(1, 1 + MAX_LEN*2))
     def test_2head(self, input_len):
         emb_dim = 48
 
@@ -55,7 +55,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
 
         self.assertTrue(torch.allclose(d_out, mh_d_out))
 
-    @params(*range(1, 1 + MAX_LEN))
+    @params(*range(1, 1 + MAX_LEN*2))
     def test_2head_3batch(self, input_len):
         emb_dim = 48
 

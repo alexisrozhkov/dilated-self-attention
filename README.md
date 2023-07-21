@@ -94,7 +94,7 @@ If the implementation in this repo is benchmarked vs a vanilla self-attention im
 
 ## To Do
 - [x] Benchmarking code and reports for dilated self-attention vs vanilla one
-- [ ] Support different w to r ratios for multi-k attention
+- [x] Support different w to r ratios for multi-k attention
 - [ ] Add dropout(s)
 - [ ] Support optimised self-attention implementation (needs to expose softmax denominators efficiently)
 - [ ] Distributed training using multiple GPUs handling parts of the sequence
