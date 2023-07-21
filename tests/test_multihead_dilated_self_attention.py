@@ -1,19 +1,22 @@
 import unittest
 
 import torch
+from nose2.tools import params
 
 from dilated_self_attention.dilated_self_attention import DilatedSelfAttention
 from dilated_self_attention.multihead_dilated_self_attention import (
     MultiheadDilatedSelfAttention,
 )
 
+MAX_LEN = 32
+
 
 class TestDilatedCausalSelfAttention(unittest.TestCase):
-    def test_noop(self):
-        max_len = 64
+    @params(*range(1, 1 + MAX_LEN*2))
+    def test_noop(self, input_len):
         emb_dim = 48
 
-        ws = [max_len]
+        ws = [MAX_LEN]
         rs = [1]
 
         mh_d_attn = MultiheadDilatedSelfAttention(ws, rs, emb_dim, 1)
@@ -21,7 +24,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
         # make sure that the underlying attention has the same weights
         d_attn = DilatedSelfAttention(ws, rs, 0, mh_d_attn.dsas[0].attn)
 
-        x = torch.normal(0, 1, (1, max_len, emb_dim))
+        x = torch.normal(0, 1, (1, input_len, emb_dim))
 
         mh_d_out = mh_d_attn(x)
 
@@ -31,11 +34,11 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
 
         self.assertTrue(torch.allclose(d_out, mh_d_out))
 
-    def test_2head(self):
-        max_len = 64
+    @params(*range(1, 1 + MAX_LEN*2))
+    def test_2head(self, input_len):
         emb_dim = 48
 
-        ws = [max_len]
+        ws = [MAX_LEN]
         rs = [1]
 
         mh_d_attn = MultiheadDilatedSelfAttention(ws, rs, emb_dim, 2)
@@ -44,7 +47,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
         d_attn1 = DilatedSelfAttention(ws, rs, 0, mh_d_attn.dsas[0].attn)
         d_attn2 = DilatedSelfAttention(ws, rs, 1, mh_d_attn.dsas[1].attn)
 
-        x = torch.normal(0, 1, (1, max_len, emb_dim))
+        x = torch.normal(0, 1, (1, input_len, emb_dim))
 
         mh_d_out = mh_d_attn(x)
 
@@ -52,11 +55,11 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
 
         self.assertTrue(torch.allclose(d_out, mh_d_out))
 
-    def test_2head_3batch(self):
-        max_len = 64
+    @params(*range(1, 1 + MAX_LEN*2))
+    def test_2head_3batch(self, input_len):
         emb_dim = 48
 
-        ws = [max_len]
+        ws = [MAX_LEN]
         rs = [1]
 
         mh_d_attn = MultiheadDilatedSelfAttention(ws, rs, emb_dim, 2)
@@ -65,7 +68,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
         d_attn1 = DilatedSelfAttention(ws, rs, 0, mh_d_attn.dsas[0].attn)
         d_attn2 = DilatedSelfAttention(ws, rs, 1, mh_d_attn.dsas[1].attn)
 
-        x = torch.normal(0, 1, (3, max_len, emb_dim))
+        x = torch.normal(0, 1, (3, input_len, emb_dim))
 
         mh_d_out = mh_d_attn(x)
 

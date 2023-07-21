@@ -72,6 +72,10 @@ class CausalSelfAttention(torch.nn.Module):
             )
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        assert x.shape[1] <= self.mask.shape[1], \
+            "sequence length (dimension 1 of the input tensor) must be smaller" \
+            " than max_n provided during construction"
+
         qkv = self.qkv_proj(x)
 
         if self.flash:
