@@ -1,19 +1,20 @@
 import math
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 
 import torch
 
 
-def _segment_and_sparsify(
+def _prepare_sparse_indices(
     x: torch.Tensor, ws: List[int], rs: List[int], head_idx: int
-) -> Tuple[int, torch.Tensor]:
+) -> Tuple[int, torch.Tensor, Optional[torch.Tensor]]:
     b, n, c = x.size()
 
     x_indices = torch.arange(0, n, dtype=torch.long, device=x.device)[None, :, None]
 
     num_subatt = sum([int(math.ceil(n / w)) for w in ws])
-    max_subatt_n = min(n, ws[0] // rs[0])
-    sparse_indices = torch.zeros((b, num_subatt * max_subatt_n, c), device=x.device, dtype=torch.int64)
+    max_subatt_n = min(n, max([w // r for w, r in zip(ws, rs)]))
+
+    sparse_indices = -1*torch.ones((b, num_subatt * max_subatt_n, c), device=x.device, dtype=torch.int64)
 
     subatt_idx = 0
     for w, r in zip(ws, rs):
@@ -25,7 +26,18 @@ def _segment_and_sparsify(
             sparse_indices[:, start_idx:end_idx] = cur_sparse_indices
             subatt_idx += 1
 
-    return max_subatt_n, sparse_indices
+    if -1 in sparse_indices:
+        padding_mask = sparse_indices[:, :, 0] != -1
+
+        # to allow gather work for batching
+        sparse_indices[~padding_mask] = 0
+
+        # combine batch and subattention dims
+        padding_mask = padding_mask.view((-1, max_subatt_n))
+    else:
+        padding_mask = None
+
+    return max_subatt_n, sparse_indices, padding_mask
 
 
 def _mix_outputs(
@@ -64,6 +76,8 @@ class DilatedSelfAttention(torch.nn.Module):
         super().__init__()
         assert len(ws) > 0
         assert len(ws) == len(rs)
+
+        # todo: deprecate this requirement
         assert (
             len(set([w // r for w, r in zip(ws, rs)])) == 1
         ), "for now w/r ratios should be identical to simplify batching"
@@ -74,12 +88,13 @@ class DilatedSelfAttention(torch.nn.Module):
         self.attn = attn_module
         self.indices = None
         self.max_subatt_n = None
+        self.padding_mask = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, n, in_c = x.size()
 
         if 1:#self.indices is None:
-            self.max_subatt_n, self.indices = _segment_and_sparsify(
+            self.max_subatt_n, self.indices, self.padding_mask = _prepare_sparse_indices(
                 x, self.ws, self.rs, self.head_idx
             )
 
@@ -88,12 +103,20 @@ class DilatedSelfAttention(torch.nn.Module):
 
         # batch "subattention" values and process in parallel
         batched_x = sparse_x.view((-1, self.max_subatt_n, in_c))
-        batched_os, batched_att_denoms = self.attn(batched_x)
+        batched_os, batched_att_denoms = self.attn(batched_x, self.padding_mask)
 
         # "unbatch" attention outputs
         out_c = batched_os.shape[-1]
         sparse_os = batched_os.view((b, -1, out_c))
         sparse_denoms = batched_att_denoms.view((b, -1))
+        sparse_indices = self.indices
+
+        # drop padded elements
+        if self.padding_mask is not None:
+            padding_mask_flat = self.padding_mask.view((b, -1))
+            sparse_os = sparse_os[padding_mask_flat].view((b, -1, out_c))
+            sparse_denoms = sparse_denoms[padding_mask_flat].view((b, -1))
+            sparse_indices = sparse_indices[padding_mask_flat].view((b, -1, in_c))
 
         return _mix_outputs(
             (b, n, out_c),
@@ -101,5 +124,5 @@ class DilatedSelfAttention(torch.nn.Module):
             x.device,
             sparse_os,
             sparse_denoms,
-            self.indices,
+            sparse_indices,
         )

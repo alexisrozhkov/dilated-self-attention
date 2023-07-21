@@ -109,6 +109,21 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
 
         self.assertTrue(torch.allclose(out, d_out, atol=1e-6))
 
+    def test_multi_k_half(self):
+        max_len = 16
+        emb_dim = 6
+
+        attn = CausalSelfAttention(emb_dim, emb_dim, max_len//2)
+        d_attn = DilatedSelfAttention([max_len // 2, max_len], [1, 2], 0, attn)
+
+        x = torch.normal(0, 1, (1, max_len, emb_dim))
+
+        d_out = d_attn(x)
+        d_out_half = d_attn(x[:, :max_len//2, :])
+
+        # todo: check whether it should be true 🤔
+        self.assertTrue(torch.allclose(d_out[:, :max_len//2, :], d_out_half[:, :, :], atol=1e-6))
+
     def test_unbatchable(self):
         max_len = 64
         emb_dim = 48
