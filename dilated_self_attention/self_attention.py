@@ -6,7 +6,7 @@ import torch
 from dilated_self_attention.softmax_with_denom import softmax_with_denom
 
 
-def _flash_self_attention(qkv_: torch.Tensor):
+def _flash_self_attention(qkv_: torch.Tensor, causal: bool):
     from einops import rearrange
     from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
 
@@ -29,7 +29,7 @@ def _flash_self_attention(qkv_: torch.Tensor):
         n,
         dropout_p,
         softmax_scale=softmax_scale,
-        causal=True,
+        causal=causal,
         return_attn_probs=True,
     )
 
@@ -53,14 +53,14 @@ def _vanilla_self_attention(qkv: torch.Tensor, out_dim: int, mask: torch.Tensor)
     return y, att_denom
 
 
-class CausalSelfAttention(torch.nn.Module):
+class SelfAttention(torch.nn.Module):
     """
     Stripped down version of Andrej Karpathy's implementation from
     https://github.com/karpathy/minGPT modified to return softmax denominator
     """
 
     def __init__(
-        self, embedding_dim: int, out_dim: int, max_n: int, flash: bool = False
+        self, embedding_dim: int, out_dim: int, max_n: int, flash: bool = False, causal: bool = True
     ):
         super().__init__()
 
@@ -68,24 +68,28 @@ class CausalSelfAttention(torch.nn.Module):
         self.out_dim = out_dim
         self.qkv_proj = torch.nn.Linear(self.emb_dim, 3 * self.out_dim)
         self.flash = flash
+        self.causal = causal
 
         if not self.flash:
+            mask = torch.ones(max_n, max_n)
+
+            if self.causal:
+                mask = torch.tril(mask)
+
             self.register_buffer(
-                "mask", torch.tril(torch.ones(max_n, max_n)).view(1, max_n, max_n)
+                "mask", mask.view(1, max_n, max_n)
             )
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
         qkv = self.qkv_proj(x)
 
         if self.flash:
-            return _flash_self_attention(qkv)
+            return _flash_self_attention(qkv, self.causal)
 
         else:
             assert x.shape[1] <= self.mask.shape[1], \
               "sequence length (dimension 1 of the input tensor) must be smaller" \
               " than max_n provided during construction"
-
-            mask = self.mask
 
             if padding_mask is not None:
                 mask = torch.multiply(
@@ -93,5 +97,7 @@ class CausalSelfAttention(torch.nn.Module):
                     torch.multiply(padding_mask[:, None, :],
                                    padding_mask[:, :, None])
                 ).long()
+            else:
+                mask = self.mask
 
             return _vanilla_self_attention(qkv, self.out_dim, mask)

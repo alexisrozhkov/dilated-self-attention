@@ -3,7 +3,7 @@ from typing import List
 import torch
 
 from dilated_self_attention.dilated_self_attention import DilatedSelfAttention
-from dilated_self_attention.self_attention import CausalSelfAttention
+from dilated_self_attention.self_attention import SelfAttention
 
 
 class MultiheadDilatedSelfAttention(torch.nn.Module):
@@ -29,7 +29,7 @@ class MultiheadDilatedSelfAttention(torch.nn.Module):
 
         dsas = []
         for head_idx in range(num_heads):
-            attn = CausalSelfAttention(
+            attn = SelfAttention(
                 self.emb_dim, self.emb_dim // self.n_heads, max_n, flash
             )
             dsa = DilatedSelfAttention(ws, rs, head_idx, attn)
