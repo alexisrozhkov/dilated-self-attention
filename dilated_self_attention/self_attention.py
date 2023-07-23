@@ -13,7 +13,10 @@ def _flash_self_attention(qkv_: torch.Tensor):
     b, n, c3 = qkv_.size()
     out_dim = c3 // 3
 
-    qkv = rearrange(qkv_, "b s (three h d) -> (b s) three h d", three=3, h=1)
+    if n == 0:
+        return qkv_[:, :, :out_dim], qkv_[:, :, 0]
+
+    qkv = rearrange(qkv_.half(), "b s (three h d) -> (b s) three h d", three=3, h=1)
     softmax_scale = 1.0 / math.sqrt(out_dim)
     dropout_p = 0.0
 
@@ -32,7 +35,7 @@ def _flash_self_attention(qkv_: torch.Tensor):
 
     output = output.view((b, n, out_dim))
 
-    return output, att_probs[:, 0, :].exp()
+    return output.float(), att_probs[:, 0, :n].exp().float()
 
 
 def _vanilla_self_attention(qkv: torch.Tensor, out_dim: int, mask: torch.Tensor):
@@ -72,16 +75,16 @@ class CausalSelfAttention(torch.nn.Module):
             )
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        assert x.shape[1] <= self.mask.shape[1], \
-            "sequence length (dimension 1 of the input tensor) must be smaller" \
-            " than max_n provided during construction"
-
         qkv = self.qkv_proj(x)
 
         if self.flash:
             return _flash_self_attention(qkv)
 
         else:
+            assert x.shape[1] <= self.mask.shape[1], \
+              "sequence length (dimension 1 of the input tensor) must be smaller" \
+              " than max_n provided during construction"
+
             mask = self.mask
 
             if padding_mask is not None:

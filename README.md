@@ -8,7 +8,7 @@ This is an attempt to implement the dilated self attention as described in
 ## Installation
 ### Basic
 ```shell
-virtualenv -p python3.8 .venv
+virtualenv -p python3.10 .venv
 source .venv/bin/activate
 
 # 2 steps below are optional, use to regenerate requirements.txt for your platform
@@ -19,10 +19,14 @@ pip install -r requirements.txt
 ```
 
 ### Optimised self-attention implementation
-After installing the basic dependencies you can install flash-attn module.  
-It is optional, since currently it is not fully integrated, some lower-tier GPUs aren't supported and the installation takes a while.
+After installing the basic dependencies you can install flash-attn module. 
+To avoid long compilation time, a prebuilt wheel can be used:
 ```shell
-pip install flash-attn==1.0.5
+# do this only once per environment
+pip wheel flash-attn==1.0.5
+...
+# install any number of times on the same enviroment without long build time
+pip install ./flash_attn-1.0.5-cp310-cp310-linux_x86_64.whl
 ```
 
 ## Usage
@@ -95,7 +99,7 @@ If the implementation in this repo is benchmarked vs a vanilla self-attention im
 ## To Do
 - [x] Benchmarking code and reports for dilated self-attention vs vanilla one
 - [x] Support different w to r ratios for multi-k attention
+- [ ] Support optimised self-attention implementation
 - [ ] Add dropout(s)
-- [ ] Support optimised self-attention implementation (needs to expose softmax denominators efficiently)
 - [ ] Distributed training using multiple GPUs handling parts of the sequence
 - [ ] Make sure torch.compile works properly (currently I get NaNs at the first iteration of training)
