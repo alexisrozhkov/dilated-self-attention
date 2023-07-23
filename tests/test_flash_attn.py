@@ -52,3 +52,24 @@ class TestFlashAttn(unittest.TestCase):
 
     test_different_wr_ratios.gpu = True
     test_different_wr_ratios.flash = True
+
+    @params(*range(1, 1 + MAX_LEN * 2))
+    def test_different_wr_ratios_noncausal(self, input_len):
+        emb_dim = 48
+
+        attn1 = SelfAttention(emb_dim, emb_dim, MAX_LEN // 2, flash=False, causal=False)
+        d_attn1 = DilatedSelfAttention([MAX_LEN // 4, MAX_LEN], [1, 2], 0, attn1).to(DEVICE)
+
+        attn2 = SelfAttention(emb_dim, emb_dim, MAX_LEN // 2, flash=True, causal=False)
+        attn2.qkv_proj = attn1.qkv_proj
+        d_attn2 = DilatedSelfAttention([MAX_LEN // 4, MAX_LEN], [1, 2], 0, attn2).to(DEVICE)
+
+        x = torch.normal(0, 1, (1, input_len, emb_dim), device=DEVICE)
+
+        d_out1 = d_attn1(x)
+        d_out2 = d_attn2(x)
+
+        self.assertTrue(torch.allclose(d_out1, d_out2, atol=1e-3))
+
+    test_different_wr_ratios_noncausal.gpu = True
+    test_different_wr_ratios_noncausal.flash = True

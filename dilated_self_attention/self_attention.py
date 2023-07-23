@@ -6,9 +6,10 @@ import torch
 from dilated_self_attention.softmax_with_denom import softmax_with_denom
 
 
-def _flash_self_attention(qkv_: torch.Tensor, causal: bool):
+def _flash_self_attention(qkv_: torch.Tensor, causal: bool, padding_mask: torch.Tensor):
     from einops import rearrange
     from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
+    from flash_attn.bert_padding import unpad_input, pad_input
 
     b, n, c3 = qkv_.size()
     out_dim = c3 // 3
@@ -16,23 +17,37 @@ def _flash_self_attention(qkv_: torch.Tensor, causal: bool):
     if n == 0:
         return qkv_[:, :, :out_dim], qkv_[:, :, 0]
 
-    qkv = rearrange(qkv_.half(), "b s (three h d) -> (b s) three h d", three=3, h=1)
     softmax_scale = 1.0 / math.sqrt(out_dim)
-    dropout_p = 0.0
 
-    cu_seqlens = torch.arange(
-        0, (b + 1) * n, step=n, dtype=torch.int32, device=qkv.device
-    )
-    output, att_probs, _ = flash_attn_unpadded_qkvpacked_func(
-        qkv,
-        cu_seqlens,
-        n,
-        dropout_p,
-        softmax_scale=softmax_scale,
-        causal=causal,
-        return_attn_probs=True,
-    )
+    if padding_mask is None:
+        qkv = rearrange(qkv_.half(), "b s (three h d) -> (b s) three h d", three=3, h=1)
+        dropout_p = 0.0
 
+        cu_seqlens = torch.arange(
+            0, (b + 1) * n, step=n, dtype=torch.int32, device=qkv.device
+        )
+        output, att_probs, _ = flash_attn_unpadded_qkvpacked_func(
+            qkv,
+            cu_seqlens,
+            n,
+            dropout_p,
+            softmax_scale=softmax_scale,
+            causal=causal,
+            return_attn_probs=True,
+        )
+
+    else:
+        x = rearrange(rearrange(qkv_.half(), 'b s (three h d) -> b s three h d', three=3, h=1), 'b s three h d -> b s (three h d)')
+        x_unpad, indices, cu_seqlens, max_s = unpad_input(x, padding_mask)
+        x_unpad = rearrange(x_unpad, 'nnz (three h d) -> nnz three h d', three=3, h=1)
+        output_unpad, att_probs, _ = flash_attn_unpadded_qkvpacked_func(
+            x_unpad, cu_seqlens, max_s, 0.0,
+            softmax_scale=softmax_scale, causal=causal,
+            return_attn_probs = True
+        )
+        output = rearrange(pad_input(rearrange(output_unpad, 'nnz h d -> nnz (h d)'),
+                                     indices, b, n),
+                           'b s (h d) -> b s h d', h=1)
     output = output.view((b, n, out_dim))
 
     return output.float(), att_probs[:, 0, :n].exp().float()
@@ -84,7 +99,7 @@ class SelfAttention(torch.nn.Module):
         qkv = self.qkv_proj(x)
 
         if self.flash:
-            return _flash_self_attention(qkv, self.causal)
+            return _flash_self_attention(qkv, self.causal, padding_mask)
 
         else:
             assert x.shape[1] <= self.mask.shape[1], \
