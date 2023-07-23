@@ -12,14 +12,17 @@ class MultiheadCausalSelfAttention(torch.nn.Module):
     Stripped down version of Andrej Karpathy's implementation from
     https://github.com/karpathy/minGPT
     """
-    def __init__(self, embedding_dim: int, num_head: int, max_n: int):
+    def __init__(self, embedding_dim: int, num_head: int, max_n: int, flash: bool):
         super().__init__()
         assert embedding_dim % num_head == 0
         self.c_attn = torch.nn.Linear(embedding_dim, 3 * embedding_dim)
         self.c_proj = torch.nn.Linear(embedding_dim, embedding_dim)
         self.n_head = num_head
         self.n_embd = embedding_dim
-        self.register_buffer("bias", torch.tril(torch.ones(max_n, max_n)).view(1, 1, max_n, max_n))
+        self.flash = flash
+
+        if not self.flash:
+            self.register_buffer("bias", torch.tril(torch.ones(max_n, max_n)).view(1, 1, max_n, max_n))
 
     def forward(self, x):
         B, T, C = x.size()
@@ -28,10 +31,15 @@ class MultiheadCausalSelfAttention(torch.nn.Module):
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
 
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
-        att = torch.nn.functional.softmax(att, dim=-1)
-        y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        if self.flash:
+            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=0, is_causal=True)
+
+        else:
+            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
+            att = torch.nn.functional.softmax(att, dim=-1)
+            y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+
         y = y.transpose(1, 2).contiguous().view(B, T, C)  # re-assemble all head outputs side by side
 
         return self.c_proj(y)
@@ -64,20 +72,22 @@ def benchmark_single_model(model: torch.nn.Module, max_seq_len: int, num_seq_len
         print(f"{time_per_seq_ms:.1f} ms")
 
 
-def main(is_dilated: bool, max_seq_len: int, num_seq_lens: int, num_iter: int, num_heads: int, emb_dim: int, device: str):
+def main(is_dilated: bool, max_seq_len: int, num_seq_lens: int, num_iter: int, num_heads: int, emb_dim: int, device: str, flash: bool):
     if is_dilated:
         model = MultiheadDilatedSelfAttention(
             [1024, 4096, 16384],
             [1, 4, 16],
             emb_dim,
-            num_heads
+            num_heads,
+            flash
         ).to(device)
 
     else:
         model = MultiheadCausalSelfAttention(
             emb_dim,
             num_heads,
-            max_seq_len
+            max_seq_len,
+            flash
         ).to(device)
 
     benchmark_single_model(model, max_seq_len, num_seq_lens, emb_dim, num_iter, device)
@@ -133,6 +143,13 @@ if __name__ == "__main__":
         type=str,
     )
 
+    parser.add_argument(
+        "--flash",
+        help="Whether to use optimised self-attention implementation from flash-attn",
+        default=0,
+        type=int,
+    )
+
     args = parser.parse_args()
 
     main(
@@ -142,5 +159,6 @@ if __name__ == "__main__":
         args.num_iter,
         args.num_heads,
         args.emb_dim,
-        args.device
+        args.device,
+        bool(args.flash)
     )

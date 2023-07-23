@@ -4,7 +4,7 @@ import torch
 from nose2.tools import params
 
 from dilated_self_attention.dilated_self_attention import DilatedSelfAttention
-from dilated_self_attention.self_attention import CausalSelfAttention
+from dilated_self_attention.self_attention import SelfAttention
 
 MAX_LEN = 32
 
@@ -14,7 +14,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
     def test_noop(self, input_len):
         emb_dim = 48
 
-        attn = CausalSelfAttention(emb_dim, emb_dim, MAX_LEN)
+        attn = SelfAttention(emb_dim, emb_dim, MAX_LEN)
         d_attn = DilatedSelfAttention([MAX_LEN], [1], 0, attn)
 
         x = torch.normal(0, 1, (1, input_len, emb_dim))
@@ -27,7 +27,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
     def test_exceed_max_len(self):
         emb_dim = 48
 
-        attn = CausalSelfAttention(emb_dim, emb_dim, MAX_LEN)
+        attn = SelfAttention(emb_dim, emb_dim, MAX_LEN)
 
         x = torch.normal(0, 1, (1, MAX_LEN + 1, emb_dim))
 
@@ -38,7 +38,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
     def test_single_head_r2(self, offset):
         emb_dim = 48
 
-        attn = CausalSelfAttention(emb_dim, emb_dim, MAX_LEN)
+        attn = SelfAttention(emb_dim, emb_dim, MAX_LEN)
         d_attn = DilatedSelfAttention([MAX_LEN], [2], offset, attn)
 
         x = torch.normal(0, 1, (1, MAX_LEN, emb_dim))
@@ -58,7 +58,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
     def test_single_head_w_half(self, input_len):
         emb_dim = 48
 
-        attn = CausalSelfAttention(emb_dim, emb_dim, MAX_LEN)
+        attn = SelfAttention(emb_dim, emb_dim, MAX_LEN)
         d_attn = DilatedSelfAttention([MAX_LEN // 2], [1], 0, attn)
 
         x = torch.normal(0, 1, (1, input_len, emb_dim))
@@ -82,7 +82,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
     def test_multi_k(self, input_len):
         emb_dim = 48
 
-        attn = CausalSelfAttention(emb_dim, emb_dim, MAX_LEN // 2)
+        attn = SelfAttention(emb_dim, emb_dim, MAX_LEN // 2)
         d_attn = DilatedSelfAttention([MAX_LEN // 2, MAX_LEN], [1, 2], 0, attn)
 
         x = torch.normal(0, 1, (1, input_len, emb_dim))
@@ -124,7 +124,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
     def test_different_wr_ratios(self, input_len):
         emb_dim = 48
 
-        attn = CausalSelfAttention(emb_dim, emb_dim, MAX_LEN // 2)
+        attn = SelfAttention(emb_dim, emb_dim, MAX_LEN // 2)
         d_attn = DilatedSelfAttention([MAX_LEN // 4, MAX_LEN], [1, 2], 0, attn)
 
         x = torch.normal(0, 1, (1, input_len, emb_dim))
@@ -169,7 +169,7 @@ class TestDilatedCausalSelfAttention(unittest.TestCase):
     def test_different_wr_ratios_missing_outputs(self, input_len):
         emb_dim = 48
 
-        attn = CausalSelfAttention(emb_dim, emb_dim, MAX_LEN // 2)
+        attn = SelfAttention(emb_dim, emb_dim, MAX_LEN // 2)
         d_attn = DilatedSelfAttention([MAX_LEN // 2, MAX_LEN], [2, 2], 0, attn)
 
         x = torch.normal(0, 1, (1, input_len, emb_dim))
