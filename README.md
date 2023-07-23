@@ -22,29 +22,30 @@ pip install -r requirements.txt
 After installing the basic dependencies you can install flash-attn module. 
 To avoid long compilation time, a prebuilt wheel can be used:
 ```shell
-# do this only once per environment
-pip wheel flash-attn==1.0.5
-...
-# install any number of times on the same enviroment without long build time
-pip install ./flash_attn-1.0.5-cp310-cp310-linux_x86_64.whl
+pip install https://github.com/alexisrozhkov/flash-attn-wheels/raw/main/flash_attn-1.0.5-cp310-cp310-linux_x86_64.whl
 ```
 
 ## Usage
 ### Run tests
+Example run confgurations:
 ```shell
+# run tests that don't use flash-attn library
+nose2 -A '!flash'
+
+# run all tests
 nose2
 ```
 
 ### Run benchmark
 CLI interface:
 ```shell
-usage: benchmark.py [-h] [--num_seq_lens NUM_SEQ_LENS] [--num_iter NUM_ITER] [--num_heads NUM_HEADS] [--emb_dim EMB_DIM] [--device DEVICE] is_dilated max_seq_len
+usage: benchmark.py [-h] [--num_seq_lens NUM_SEQ_LENS] [--num_iter NUM_ITER] [--num_heads NUM_HEADS] [--emb_dim EMB_DIM] [--device DEVICE] [--flash FLASH] is_dilated max_seq_len
 
 positional arguments:
   is_dilated            Whether to benchmark a dilated or vanilla self-attention
   max_seq_len           Maximum sequence length to benchmark
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --num_seq_lens NUM_SEQ_LENS
                         Number of sequence length to evaluate (each is 2x larger than the previous one) (default: 4)
@@ -53,6 +54,7 @@ optional arguments:
                         Number of heads for multi-head self-attention (default: 3)
   --emb_dim EMB_DIM     Embedding dimensionality (default: 384)
   --device DEVICE       Device to put the model and input on (default: cuda:0)
+  --flash FLASH         Whether to use optimised self-attention implementation from flash-attn (default: 0)
 ```
 
 Example benchmark output (on Google Colab instance with T4 GPU):
